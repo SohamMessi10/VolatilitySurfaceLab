@@ -1,8 +1,10 @@
 """Command line interface ``vsl``.
 
 Subcommands: ``generate`` (synthetic Heston market), ``calibrate`` (SVI fit per expiry),
-``check`` (static-arbitrage report), ``plot`` (interactive HTML report) and ``run``
-(all of the above into one directory).
+``check`` (static-arbitrage report), ``plot`` (interactive HTML report), ``run``
+(all of the above into one directory) and ``fetch`` (optional: a real option chain from
+Yahoo Finance via ``yfinance``; personal use only, output defaults to the git-ignored
+``data/`` directory).
 
 Exit codes:
 
@@ -94,8 +96,16 @@ def _build_market(args: argparse.Namespace) -> MarketData:
         raise CliError(f"invalid parameters: {e}") from e
 
 
+def _ensure_parent(path: Path) -> None:
+    """Create the output file's directory if needed (errors surface as CliError via OSError)."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
 def _write_market(market: MarketData, json_path: Path, csv_path: Path | None) -> None:
     try:
+        _ensure_parent(json_path)
+        if csv_path is not None:
+            _ensure_parent(csv_path)
         market.to_json(json_path)
         if csv_path is not None:
             market.to_csv(csv_path)
@@ -173,6 +183,7 @@ def _print_fit_table(fits: list[SliceFit], blob: dict) -> None:
 
 def _write_json(path: Path, blob: dict) -> None:
     try:
+        _ensure_parent(path)
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(blob, fh, indent=1, allow_nan=False)
     except OSError as e:
@@ -261,6 +272,7 @@ def _plot(
 ) -> None:
     kw = {} if title is None else {"title": title}
     try:
+        _ensure_parent(path)
         write_report_html(path, fits, market, report, include_plotlyjs=plotlyjs, **kw)
     except OSError as e:
         raise CliError(f"cannot write {path}: {e.strerror}") from e
@@ -297,6 +309,38 @@ def cmd_run(args: argparse.Namespace) -> int:
     _plot(outdir / "surface.html", fits, market, report, args.plotlyjs, args.title)
     print(f"wrote market.json, market.csv, fit.json, report.json, surface.html in {outdir}")
     return EXIT_OK if passed else EXIT_ARBITRAGE
+
+
+def cmd_fetch(args: argparse.Namespace) -> int:
+    from .fetch import fetch_market_with_info
+
+    out = Path(args.output or f"data/{args.symbol.lower()}.json")
+    try:
+        market, info = fetch_market_with_info(
+            args.symbol,
+            max_expiries=args.max_expiries,
+            min_days=args.min_days,
+            max_days=args.max_days,
+            fallback_rate=args.fallback_rate,
+        )
+    except ImportError as e:
+        raise CliError(str(e)) from e
+    except ValueError as e:
+        raise CliError(f"fetch failed: {e}") from e
+    except Exception as e:  # third-party network code fails in many ways (offline, API change)
+        raise CliError(
+            f"could not fetch {args.symbol} from Yahoo Finance (offline, blocked or an API "
+            f"change?): {type(e).__name__}: {e}"
+        ) from e
+    _write_market(market, out, None)
+    for date, d in info.items():
+        print(
+            f"  {date}  T={d['T']:.4f}  F={d['F']:.4f}  df={d['df']:.5f}  "
+            f"{d['method']:<8}  {d['n_quotes']} quotes"
+        )
+    print(_summary_line(market, out))
+    print("note: Yahoo Finance data is for personal use only; do not commit or redistribute it")
+    return EXIT_OK
 
 
 # --------------------------------------------------------------------------- parser
@@ -356,6 +400,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--plotlyjs", choices=("inline", "cdn"), default="inline", help="plotly.js")
     p.add_argument("--title", default=None, help="report title")
     _add_model_args(p)
+
+    p = add(
+        "fetch",
+        cmd_fetch,
+        "fetch a real option chain from Yahoo Finance (needs volsurface[fetch]; personal use only)",
+    )
+    p.add_argument("symbol", nargs="?", default="SPY", help="ticker symbol (SPY)")
+    p.add_argument("-o", "--output", default=None, help="market JSON (data/<symbol>.json)")
+    p.add_argument("--max-expiries", type=int, default=8, help="number of expiries (8)")
+    p.add_argument("--min-days", type=int, default=7, help="skip expiries sooner than this (7)")
+    p.add_argument("--max-days", type=int, default=730, help="skip expiries later than this (730)")
+    p.add_argument(
+        "--fallback-rate",
+        type=float,
+        default=0.04,
+        help="rate used when put-call parity cannot imply the forward (0.04)",
+    )
     return ap
 
 

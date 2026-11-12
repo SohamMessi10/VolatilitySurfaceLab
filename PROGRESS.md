@@ -17,6 +17,9 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
 | 4 | Synthetic market: Heston grid → seeded bid/ask noise → IV table (JSON/CSV) | VERIFIED | `tests/test_market.py` |
 | 5 | Raw SVI per-expiry calibration (constraints + Lee wing bound exact, 18-start least squares) | VERIFIED | `tests/test_svi.py`, `tests/test_pipeline.py` |
 | 6 | Static-arbitrage checks: Durrleman butterfly, calendar total variance | VERIFIED | `tests/test_arbitrage.py`, `tests/test_pipeline.py` |
+| 7 | CLI `vsl` (generate / calibrate / check / plot / run) + interactive HTML report | VERIFIED | `tests/test_cli.py`, `tests/test_plotting.py`, rendered in headless Chromium at 1280 px and 390 px |
+| 7b | GitHub Pages demo from `/docs` | BLOCKED | Pages files committed; enabling Pages needs a repo-settings change this session cannot make (see README) |
+| 8 | `vsl fetch` (real SPY chain via yfinance, optional extra) | IMPLEMENTED | Offline tests with a fake chain (`tests/test_fetch.py`); live call BLOCKED here: the environment's proxy refuses Yahoo hosts (HTTP 403) |
 
 ## Log
 
@@ -108,3 +111,29 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
   quoted ranges, but only 2/20 free on the full extrapolated grid. Independent per-slice SVI
   fits do not guarantee arbitrage-free extrapolation; a joint (SSVI-type) calibration is the
   standard fix and is listed as future work.
+
+### M7 — CLI and report
+- `vsl generate | calibrate | check | plot | run | fetch`; exit codes 0 ok, 1 arbitrage,
+  2 usage, 3 input error, 4 numerical failure; expected errors print one line, no traceback.
+- Report: summary, per-slice fit error (vs market and vs true Heston IV), arbitrage list with
+  in/out-of-quoted-range flags, 3D SVI surface + market points + flags, smile panels with
+  bid/ask IV error bars. Surface between expiries interpolates total variance linearly in T
+  (keeps calendar monotonicity). Inline plotly.js 4.9 MB (offline); `--plotlyjs cdn` 120 kB.
+- Rendered in headless Chromium (SwiftShader WebGL) at 1280 px and 390 px: no console errors,
+  no horizontal page scroll (wide tables scroll in their own container).
+- Found while building the demo: `vsl plot -o docs/x.html` failed when `docs/` did not exist;
+  outputs now create their parent directories.
+- Demo pages: `docs/index.html` (noise 1, seed 3: one calendar violation, purely in the
+  extrapolated wings) and `docs/clean.html` (noise-free: passes). They load plotly.js 4.1.1
+  from cdn.plot.ly (version confirmed on npm; the CDN itself is not reachable from this
+  container, so the live page render must be checked once Pages is enabled).
+
+### M8 — Optional live fetch
+- Verified against the installed yfinance 1.8.0 source: `Ticker(sym).options`,
+  `option_chain(date) -> (calls, puts, underlying)`, column names, `fast_info["lastPrice"]`.
+- Forward and discount factor per expiry are implied by put–call parity (regression of
+  C − P on K near the money), so no dividend/rate guess is needed; fallback to a flat rate
+  is reported per expiry.
+- Yahoo's terms: personal use only. Output defaults to `data/` (git-ignored); nothing fetched
+  is committed. A blocked/offline network now maps to exit 3 with a one-line message (found
+  by running it here: yfinance raised an internal `TypeError`).

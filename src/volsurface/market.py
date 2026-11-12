@@ -150,7 +150,7 @@ class MarketData:
         meta = {
             "spec": self.spec.to_dict(),
             "heston": None if self.heston is None else self.heston.to_dict(),
-            "noise": self.noise,
+            "noise": None if math.isnan(self.noise) else self.noise,
             "seed": self.seed,
             "n_dropped": self.n_dropped,
         }
@@ -264,7 +264,7 @@ def load_market(path: str | Path) -> MarketData:
         return MarketData(
             spec=MarketSpec.from_dict(meta["spec"]),
             heston=None if meta["heston"] is None else HestonParams.from_dict(meta["heston"]),
-            noise=float(meta["noise"]),
+            noise=math.nan if meta["noise"] is None else float(meta["noise"]),
             seed=meta["seed"],
             n_dropped=int(meta["n_dropped"]),
             rows=[_quote_from_mapping(r) for r in blob["rows"]],
