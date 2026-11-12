@@ -146,3 +146,31 @@ def test_recovers_random_valid_params(p):
     grid = np.linspace(-1, 1, 101)
     err = 100 * np.abs(svi_implied_vol(grid, 1.0, fit.params) - svi_implied_vol(grid, 1.0, p))
     assert err.max() < TOL
+
+
+def test_analytic_jacobian_matches_finite_differences():
+    from volsurface.svi import _model_jac, _model_w
+
+    k = np.linspace(-1.2, 0.9, 17)
+    for x in (
+        [0.02, 0.3, -0.55, 0.1, 0.25],
+        [0.05, 0.7, 0.4, -0.2, 0.08],
+        [0.0, 0.1, 0.0, 0.0, 1.0],
+    ):
+        x = np.array(x)
+        num = np.empty((k.size, 5))
+        for j in range(5):
+            h = 1e-6 * max(1.0, abs(x[j]))
+            xp, xm = x.copy(), x.copy()
+            xp[j] += h
+            xm[j] -= h
+            num[:, j] = (_model_w(xp, k) - _model_w(xm, k)) / (2 * h)
+        if x[2] == 0.0:  # |rho| has a kink at 0: compare the one-sided derivative from above
+            xp = x.copy()
+            xp[2] += 1e-7
+            num[:, 2] = (_model_w(xp, k) - _model_w(x, k)) / 1e-7
+            np.testing.assert_allclose(
+                _model_jac(x, k)[:, [0, 1, 3, 4]], num[:, [0, 1, 3, 4]], atol=1e-8
+            )
+            continue
+        np.testing.assert_allclose(_model_jac(x, k), num, atol=1e-8)
