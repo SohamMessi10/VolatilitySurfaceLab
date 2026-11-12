@@ -19,6 +19,7 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
 | 6 | Static-arbitrage checks: Durrleman butterfly, calendar total variance | VERIFIED | `tests/test_arbitrage.py`, `tests/test_pipeline.py` |
 | 7 | CLI `vsl` (generate / calibrate / check / plot / run) + interactive HTML report | VERIFIED | `tests/test_cli.py`, `tests/test_plotting.py`, rendered in headless Chromium at 1280 px and 390 px |
 | 7b | GitHub Pages demo from `/docs` | BLOCKED | Pages files committed; enabling Pages needs a repo-settings change this session cannot make (see README) |
+| 9 | README (math, architecture, measured results, design notes) | VERIFIED | Numbers cross-checked against `benchmarks/results.json`; Mermaid diagram rendered with mermaid 11.12; example commands executed |
 | 8 | `vsl fetch` (real SPY chain via yfinance, optional extra) | IMPLEMENTED | Offline tests with a fake chain (`tests/test_fetch.py`); live call BLOCKED here: the environment's proxy refuses Yahoo hosts (HTTP 403) |
 
 ## Log
@@ -139,3 +140,12 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
 - Yahoo's terms: personal use only. Output defaults to `data/` (git-ignored); nothing fetched
   is committed. A blocked/offline network now maps to exit 3 with a one-line message (found
   by running it here: yfinance raised an internal `TypeError`).
+
+### M9 — README and a flaky test
+- README drafted from `benchmarks/results.json` and this ledger, then checked line by line
+  (fixed: fetch output path, optimizer coordinates, citation, missing diagram edges).
+- While drafting, a full test run failed once: `test_scalar_fast_path_matches_vectorized`
+  (Hypothesis, random each run) at k = −1.2e-7, s = 0.0156. The tolerance only modelled
+  deep-wing cancellation; near the money e^k N(−d2) − N(−d1) subtracts two numbers ≈ 0.5.
+  Fixed with the subtraction's condition number (a + b)/|a − b|; then 0 failures over 40
+  Hypothesis seeds of all property tests and over 300,000 targeted points.
