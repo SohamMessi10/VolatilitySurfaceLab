@@ -28,6 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+fetch = ["yfinance>=1.8"]  # optional: `vsl fetch` (Yahoo data is for personal use only)
 dev = [
     "pytest>=9.2",
     "hypothesis>=6.170",

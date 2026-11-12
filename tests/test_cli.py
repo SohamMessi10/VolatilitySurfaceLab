@@ -121,3 +121,56 @@ def test_module_help_lists_exit_codes():
     assert r.returncode == 0
     for word in ("exit codes", "arbitrage detected", "usage error", "input error", "numerical"):
         assert word in r.stdout
+
+
+def test_outputs_create_missing_parent_directories(tmp_path):
+    out = tmp_path / "a" / "b"
+    assert main(["generate", "-o", str(out / "m.json"), "--csv", str(out / "c" / "m.csv")]) == 0
+    assert main(["calibrate", str(out / "m.json"), "-o", str(out / "f" / "fit.json")]) == 0
+    html_path = out / "p" / "s.html"
+    fit = str(out / "f" / "fit.json")
+    assert main(["plot", fit, "--plotlyjs", "cdn", "-o", str(html_path)]) == 0
+    assert html_path.exists()
+
+
+def test_fetch_without_yfinance_is_an_input_error(monkeypatch, capsys):
+    monkeypatch.setitem(sys.modules, "yfinance", None)
+    assert main(["fetch", "SPY", "-o", "unused.json"]) == 3
+    assert "volsurface[fetch]" in capsys.readouterr().err
+
+
+def test_fetch_writes_market_from_provider(monkeypatch, tmp_path, capsys):
+    # No network in tests: replace the provider with a tiny synthetic market.
+    import volsurface.fetch as fetch_mod
+    from volsurface.market import generate_market
+
+    def fake(symbol, **kwargs):
+        m = generate_market()
+        return m, {
+            "2027-01-15": {
+                "T": 0.1,
+                "F": 100.0,
+                "df": 0.99,
+                "method": "parity",
+                "n_quotes": len(m.rows),
+            }
+        }
+
+    monkeypatch.setattr(fetch_mod, "fetch_market_with_info", fake)
+    out = tmp_path / "data" / "spy.json"
+    assert main(["fetch", "SPY", "-o", str(out)]) == 0
+    assert out.exists()
+    assert "personal use only" in capsys.readouterr().out
+
+
+def test_fetch_network_failure_is_a_clean_input_error(monkeypatch, capsys):
+    import volsurface.fetch as fetch_mod
+
+    def broken(symbol, **kwargs):
+        raise TypeError("argument of type 'NoneType' is not iterable")  # what yfinance does offline
+
+    monkeypatch.setattr(fetch_mod, "fetch_market_with_info", broken)
+    assert main(["fetch", "SPY", "-o", "unused.json"]) == 3
+    err = capsys.readouterr().err
+    assert "could not fetch SPY" in err
+    assert "Traceback" not in err
