@@ -174,3 +174,11 @@ def test_fetch_network_failure_is_a_clean_input_error(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "could not fetch SPY" in err
     assert "Traceback" not in err
+
+
+def test_generate_with_exploding_moments_uses_lewis_fallback(tmp_path):
+    # vol-of-vol 3, rho -0.99: no usable FFT damping at T = 5 and 10. Generation must still
+    # succeed (direct integration) instead of failing with a numerical error.
+    out = tmp_path / "m.json"
+    args = ["--v0", "0.04", "--kappa", "0.1", "--theta", "0.04", "--xi", "3", "--rho", "-0.99"]
+    assert main(["generate", "-o", str(out), "--expiries", "0.5,5,10", *args]) == 0

@@ -41,6 +41,7 @@ from scipy.interpolate import CubicSpline
 from .black_scholes import log_moneyness
 
 __all__ = [
+    "DampingError",
     "HestonError",
     "HestonParams",
     "critical_moments",
@@ -55,6 +56,10 @@ __all__ = [
 
 class HestonError(ValueError):
     """Invalid Heston parameters or a failed transform."""
+
+
+class DampingError(HestonError):
+    """No Carr–Madan damping is usable at this expiry (the needed moments explode)."""
 
 
 @dataclass(frozen=True)
@@ -230,7 +235,7 @@ def _damping(alpha: float, side: str, T: float, p: HestonParams) -> float:
     a_max = plus - 1.0 if side == "call" else -minus
     a = min(alpha, 0.5 * a_max)
     if a < MIN_DAMPING:
-        raise HestonError(
+        raise DampingError(
             f"Carr-Madan damping for the {side} side at T={T:g} would be {a:.3g} "
             f"(moments explode beyond order {plus if side == 'call' else minus:.3g}); "
             "the FFT is unreliable here - use method='lewis'"
@@ -311,8 +316,15 @@ def heston_price(
 ) -> NDArray:
     """Discounted Heston prices of European options on forward ``F`` (one expiry).
 
-    ``method="fft"`` (Carr–Madan) or ``"lewis"`` (direct integration).
+    ``method="fft"`` (Carr–Madan), ``"lewis"`` (direct integration) or ``"auto"``: FFT,
+    falling back to Lewis when no FFT damping is usable at this expiry. Lewis only needs
+    the moment of order 1/2, which never explodes in Heston, so it is always valid.
     """
+    if method == "auto":
+        try:
+            return heston_price(F, K, T, p, df, is_call, method="fft", **kwargs)
+        except DampingError:
+            return heston_price(F, K, T, p, df, is_call, method="lewis")
     k = log_moneyness(K, F)
     is_call = np.broadcast_to(np.asarray(is_call, dtype=bool), k.shape)
     if method == "fft":
@@ -321,6 +333,6 @@ def heston_price(
     elif method == "lewis":
         call = heston_call_lewis(k, T, p, **kwargs)
     else:
-        raise ValueError(f"unknown method {method!r}; use 'fft' or 'lewis'")
+        raise ValueError(f"unknown method {method!r}; use 'fft', 'lewis' or 'auto'")
     put = call + np.expm1(k)  # normalized parity: p = c - (1 - e^k)
     return df * F * np.where(is_call, call, put)
