@@ -21,8 +21,12 @@ import numpy as np
 import scipy
 
 import volsurface
+from volsurface.arbitrage import check_surface
 from volsurface.black_scholes import bs_price, normalized_otm
+from volsurface.heston import heston_call_lewis, heston_otm_fft
 from volsurface.implied_vol import PriceOutOfBoundsError, implied_vol
+from volsurface.market import DEFAULT_HESTON, generate_market
+from volsurface.svi import fit_svi_surface, svi_implied_vol
 
 
 def machine_info() -> dict:
@@ -116,6 +120,90 @@ def bench_implied_vol(n: int, seed: int) -> dict:
     }
 
 
+def bench_heston(repeats: int) -> dict:
+    p = DEFAULT_HESTON
+    k = np.linspace(-1.5, 1.0, 26)
+    maturities = (0.05, 0.25, 1.0, 3.0, 10.0)
+    max_err = {}
+    for T in maturities:
+        c = heston_call_lewis(k, T, p)
+        ref = np.where(k >= 0, c, c + np.expm1(k))
+        max_err[str(T)] = float(np.max(np.abs(heston_otm_fft(k, T, p) - ref)))
+    fft_ms = timed(lambda: heston_otm_fft(k, 1.0, p), repeats) * 1e3
+    lewis_ms = timed(lambda: heston_call_lewis(k[:5], 1.0, p), max(1, repeats // 5)) * 1e3 / 5
+    return {
+        "settings": {
+            "params": p.to_dict(),
+            "k": "linspace(-1.5, 1.0, 26)",
+            "fft": {"n": 2**15, "eta": 0.1, "alpha": 1.5},
+            "reference": "Lewis (2001) integral, scipy.integrate.quad on [0, inf)",
+        },
+        "max_abs_error_vs_lewis_normalized_by_forward": max_err,
+        "fft_ms_per_expiry_26_strikes": fft_ms,
+        "lewis_ms_per_strike": lewis_ms,
+    }
+
+
+def _error_vs_true(market, fits) -> list[dict]:
+    rows = []
+    for f in fits:
+        qs = [q for q in market.slice(f.T) if math.isfinite(q.iv_mid)]
+        k = np.array([q.log_moneyness for q in qs])
+        iv_true = np.array([q.iv_true for q in qs])
+        err = 100.0 * (svi_implied_vol(k, f.T, f.params) - iv_true)
+        rows.append(
+            {
+                "T": f.T,
+                "n": f.n_points,
+                "rmse_vs_market_vp": f.rmse_vol_points,
+                "max_vs_market_vp": f.max_abs_vol_points,
+                "rmse_vs_true_vp": float(np.sqrt(np.mean(err**2))),
+                "max_vs_true_vp": float(np.max(np.abs(err))),
+            }
+        )
+    return rows
+
+
+def bench_pipeline(n_seeds: int) -> dict:
+    out = {}
+    t0 = time.perf_counter()
+    market = generate_market(noise=0.0)
+    t1 = time.perf_counter()
+    fits = fit_svi_surface(market.slices())
+    t2 = time.perf_counter()
+    report = check_surface(fits)
+    t3 = time.perf_counter()
+    out["clean"] = {
+        "quotes": len(market.rows),
+        "dropped": market.n_dropped,
+        "generate_s": t1 - t0,
+        "calibrate_s": t2 - t1,
+        "check_s": t3 - t2,
+        "arbitrage_free_full_grid": report.passed,
+        "slices": _error_vs_true(market, fits),
+    }
+    passed_full = passed_quoted = 0
+    worst_true = 0.0
+    calib_times = []
+    for seed in range(n_seeds):
+        m = generate_market(noise=1.0, seed=seed)
+        s0 = time.perf_counter()
+        f = fit_svi_surface(m.slices())
+        calib_times.append(time.perf_counter() - s0)
+        r = check_surface(f)
+        passed_full += r.passed
+        passed_quoted += r.passed_in_quoted_range
+        worst_true = max(worst_true, max(row["max_vs_true_vp"] for row in _error_vs_true(m, f)))
+    out["noisy"] = {
+        "settings": {"noise": 1.0, "seeds": f"0..{n_seeds - 1}", "rel_half_spread": 0.02},
+        "arbitrage_free_in_quoted_range": f"{passed_quoted}/{n_seeds}",
+        "arbitrage_free_full_grid_k_-1.5_1.5": f"{passed_full}/{n_seeds}",
+        "worst_svi_error_vs_true_vp": worst_true,
+        "median_calibrate_s": statistics.median(calib_times),
+    }
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true", help="smaller sample sizes")
@@ -124,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
 
     results = {"machine": machine_info()}
     results["implied_vol"] = bench_implied_vol(n=2000 if args.quick else 20000, seed=0)
+    results["heston"] = bench_heston(repeats=5 if args.quick else 20)
+    results["pipeline"] = bench_pipeline(n_seeds=3 if args.quick else 20)
     text = json.dumps(results, indent=2)
     print(text)
     if args.json:

@@ -188,6 +188,29 @@ def _model_w(x: NDArray[np.float64], k: NDArray[np.float64]) -> NDArray[np.float
     return a + b * (rho * u + np.sqrt(u * u + sigma * sigma))
 
 
+def _model_jac(x: NDArray[np.float64], k: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Analytic Jacobian of :func:`_model_w` w.r.t. (c, beta, rho, m, sigma).
+
+    Writing w = c + b G with G = rho u + s - sigma sqrt(1 - rho^2), u = k - m,
+    s = sqrt(u^2 + sigma^2) and b = 2 beta / (1 + |rho|).
+    """
+    _c, beta, rho, m, sigma = (float(v) for v in x)
+    abs_rho = abs(rho)
+    b = 2.0 * beta / (1.0 + abs_rho)
+    root = math.sqrt(1.0 - rho * rho)
+    u = k - m
+    s = np.sqrt(u * u + sigma * sigma)
+    G = rho * u + s - sigma * root
+    jac = np.empty((k.size, 5))
+    jac[:, 0] = 1.0
+    jac[:, 1] = 2.0 / (1.0 + abs_rho) * G
+    db_drho = -b * math.copysign(1.0, rho) / (1.0 + abs_rho) if rho != 0.0 else 0.0
+    jac[:, 2] = db_drho * G + b * (u + sigma * rho / root)
+    jac[:, 3] = -b * (rho + u / s)
+    jac[:, 4] = b * (sigma / s - root)
+    return jac
+
+
 def fit_svi_slice(
     k: ArrayLike,
     iv: ArrayLike,
@@ -232,6 +255,9 @@ def fit_svi_slice(
     def resid(x: NDArray[np.float64]) -> NDArray[np.float64]:
         return (_model_w(x, k_arr) - w_mkt) * wts
 
+    def jac(x: NDArray[np.float64]) -> NDArray[np.float64]:
+        return _model_jac(x, k_arr) * wts[:, None]
+
     k_atm_min = float(k_arr[int(np.argmin(w_mkt))])
     w_min = max(float(w_mkt.min()), 1e-8)
     # Wing slopes of total variance give a starting scale for b.
@@ -247,6 +273,7 @@ def fit_svi_slice(
         res = least_squares(
             resid,
             x0,
+            jac=jac,
             bounds=(lower, upper),
             method="trf",
             x_scale="jac",
