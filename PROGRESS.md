@@ -63,7 +63,8 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
   a 3e-8 bias). α is capped per expiry at half the admissible range from the critical
   moments (Andersen–Piterbarg explosion time, verified against the real Riccati ODE to
   rel 1e-5); η shrinks with α to keep η/pole-distance fixed. Unusable damping raises and
-  points to `method="lewis"` instead of silently mispricing (found while testing: α = 3
+  points to `method="lewis"` (since the audit, `method="auto"` switches automatically) instead of
+  silently mispricing (found while testing: α = 3
   at T = 3 gave a 0.068 error with no NaN).
 - FFT vs Lewis (`quad` on [0, ∞)) on k ∈ [−1.5, 1], 26 strikes: max |Δ| / F ≤ 1.5e-11 for
   the equity parameter set at T ∈ {0.05, 0.25, 1, 3, 10} and ≤ 9e-12 for a ρ > 0 set
@@ -149,3 +150,19 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
   deep-wing cancellation; near the money e^k N(−d2) − N(−d1) subtracts two numbers ≈ 0.5.
   Fixed with the subtraction's condition number (a + b)/|a − b|; then 0 failures over 40
   Hypothesis seeds of all property tests and over 300,000 targeted points.
+
+### Final audit (senior engineer / quant / QA / recruiter)
+- QA fuzz of the CLI (malformed JSON/CSV, empty fits, bad grids, negative noise, unordered
+  or non-numeric expiries, unwritable paths): every case returns the documented exit code with
+  a one-line message, no tracebacks.
+- Found: extreme parameters (ξ = 3, ρ = −0.99, T = 5 and 10) made `vsl generate` exit 4 with a
+  hint the CLI could not act on. Fixed with `heston_price(method="auto")`: FFT, else Lewis per
+  expiry (Lewis needs only the order-1/2 moment, which never explodes). Tested.
+- Packaging: the wheel contains only the package; a clean venv installed from the wheel runs
+  `vsl run` (exit 0). The sdist is now an explicit allow-list (it was shipping the demo pages and
+  screenshots), and the version is single-sourced from `volsurface/__init__.py`.
+- README proofread by a separate pass (links, anchors, LaTeX, wording); fixed unverified
+  "Apple Silicon is fine" (now: arm64 wheels exist for numpy 2.5.4 / scipy 1.18.1, project not run
+  on a Mac), a per-expiry vs per-strike timing comparison, an undefined d₋, and the SVI σ naming.
+- Open items that need the repository owner: enable GitHub Pages (main, /docs); optionally rename
+  the repo to `volatility-surface-lab` and set the description/topics; run `vsl fetch` live.

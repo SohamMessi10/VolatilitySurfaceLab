@@ -3,9 +3,10 @@
 [![CI](https://github.com/SohamMessi10/VolatilitySurfaceLab/actions/workflows/ci.yml/badge.svg)](https://github.com/SohamMessi10/VolatilitySurfaceLab/actions/workflows/ci.yml)
 
 Volatility Surface Lab (package `volsurface`, command line tool `vsl`) builds an implied-volatility
-surface from a synthetic option market, fits it, and checks the result for static arbitrage. The
-market is generated from a Heston stochastic-volatility model, so the true implied vol of every
-quote is known. Each expiry is then fitted with a raw SVI smile, and the fitted surface is tested
+(IV) surface from a synthetic option market, fits it, and checks the result for static arbitrage.
+The market is generated from a Heston stochastic-volatility model, so the true implied vol of every
+quote is known. Each expiry is then fitted with a raw SVI ("stochastic volatility inspired",
+Gatheral 2004) smile, and the fitted surface is tested
 for butterfly arbitrage (Durrleman's condition) and calendar arbitrage (total variance monotone in
 maturity). The output is an interactive HTML report.
 
@@ -26,7 +27,7 @@ or to extract a density, you need a smooth surface through them, and the surface
 static arbitrage or it implies trades with guaranteed profit:
 
 - **Butterfly arbitrage** (within one expiry). Call prices must be convex in strike, which is the
-  same as a non-negative risk-neutral density. A smile that implies negative density prices some
+  same as a non-negative risk-neutral density. A smile with a negative implied density prices some
   butterfly spread at a negative value.
 - **Calendar arbitrage** (across expiries). At a fixed forward moneyness, total implied variance
   $w = \sigma^2 T$ must not decrease with maturity. Otherwise a calendar spread has negative value.
@@ -61,8 +62,9 @@ These show the market generated with `--noise 1 --seed 3`.
 
 ## 3. Quick start
 
-Requires Python 3.12 or newer. Apple Silicon is fine: the project is pure Python on top of
-numpy and scipy wheels.
+Requires Python 3.12 or newer (CI tests 3.12 and 3.13). The code is pure Python; numpy 2.5.4 and
+scipy 1.18.1 publish macOS arm64 wheels for both versions, so Apple Silicon needs no compiler. The
+project itself has been run only on the Linux build container, not on a Mac.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -101,7 +103,8 @@ vsl calibrate data/spy.json -o fit.json
 ```
 
 `vsl fetch` is for personal use only, in line with the Yahoo Finance terms. Fetched data is
-written to `data/`, which is git-ignored, and is never committed. The live call was **not run**:
+written to `data/`, which is git-ignored, so it is not committed by accident; do not commit or
+redistribute it. The live call was **not run**:
 the build environment's proxy refuses Yahoo hosts (HTTP 403). The code is tested offline with a
 fake chain (`tests/test_fetch.py`) and checked against the installed yfinance source. Treat it as
 implemented, not field-tested. Options: `--max-expiries` (8), `--min-days` (7), `--max-days` (730),
@@ -149,8 +152,8 @@ undiscounted out-of-the-money price depends only on $(k, s)$:
 $$c(k, s) = \frac{C_{\mathrm{OTM}}}{\mathrm{df}\,F}
 = \Phi(d_1) - e^{k}\,\Phi(d_2), \qquad d_1 = -\frac{k}{s} + \frac{s}{2},\quad d_2 = d_1 - s$$
 
-(call form for $k \ge 0$; the mirrored put form for $k < 0$). In-the-money prices come from
-put–call parity, so the time value of deep OTM options is not lost to cancellation against
+(call form for $k \ge 0$; the mirrored put form for $k < 0$). In-the-money prices are obtained from
+put–call parity, which keeps the small time value of deep OTM options from being swamped by the
 intrinsic value.
 
 **Implied-vol solver.** $c$ is increasing in $s$, convex below the inflection point
@@ -174,18 +177,23 @@ so there is no cancellation as $\xi \to 0$ and the formula reduces to Black–Sc
 The complex $\log(1+z)/z$ is evaluated as Kahan's $\log(w)/(w-1)$, because numpy's complex `log1p`
 was measured at 6e-8 relative error for $|z| \sim 10^{-9}$.
 
-**Carr–Madan FFT.** Calls use damping $+\alpha$ for $k \ge 0$. Puts use the mirrored damping
-$-1-\alpha$ for $k < 0$, so the factor $e^{-\alpha k}$ is at most 1 and OTM time values keep their
-absolute accuracy. $\alpha$ is capped per expiry at half the admissible range given by the
-critical moments (moment explosion time, Andersen and Piterbarg 2007). If no usable damping
-exists, the pricer raises an error that points to the Lewis method.
+**Carr–Madan FFT.** Calls use damping $a = +\alpha$ for $k \ge 0$; puts use the mirrored damping
+$a = -1-\alpha$ for $k < 0$. On each side the inverse-transform factor $e^{-a k}$ is at most 1, so
+OTM time values keep their absolute accuracy, and the mirror puts the integrand's poles at the same
+distance from the real axis on both sides. $\alpha$ is capped per expiry at half the admissible
+range given by the critical moments (moment explosion time, Andersen and Piterbarg 2007). Where no
+usable damping exists, the raw FFT refuses to price; `heston_price(method="auto")`, which the
+market generator uses, then switches that expiry to Lewis integration.
 
 **Lewis cross-check.** An independent pricer integrates the Lewis (2001) formula with
-`scipy.integrate.quad` on $[0, \infty)$. It is used to verify the FFT and to generate reference IVs.
+`scipy.integrate.quad` on $[0, \infty)$. It verifies the FFT, and it is the fallback when the FFT
+has no usable damping: it only needs the moment of order 1/2, which never explodes in Heston.
 
 **Raw SVI** (Gatheral 2004), total variance of one expiry:
 
 $$w(k) = a + b\left(\rho\,(k - m) + \sqrt{(k - m)^2 + \sigma^2}\right)$$
+
+(Here $\sigma$ is SVI's smoothing parameter, the conventional name, not a volatility.)
 
 The optimizer works on $(c, \beta, \rho, m, \sigma)$ with box bounds and sets
 $a = c - b\sigma\sqrt{1-\rho^2}$, so the minimum variance is $c \ge 0$ for every point in the box.
@@ -196,7 +204,8 @@ $\beta \in [0, 1]$. Both constraints hold exactly, with no penalties or projecti
 
 $$g(k) = \left(1 - \frac{k\,w'}{2w}\right)^2 - \frac{w'^2}{4}\left(\frac{1}{w} + \frac14\right) + \frac{w''}{2} \;\ge\; 0.$$
 
-$g$ is proportional to the risk-neutral density of log-moneyness (Gatheral and Jacquier 2014), so
+$g$ is proportional to the risk-neutral density of log-moneyness (Gatheral and Jacquier 2014;
+see the design notes for the exact relation), so
 $g \ge 0$ means no butterfly arbitrage in that slice. It is checked on a 3,001-point grid over
 $k \in [-1.5, 1.5]$ by default.
 
@@ -254,7 +263,7 @@ to reproduce them on yours.
 | Quantity | Value |
 |---|---|
 | Solved | 19,625 |
-| Rejected (time value below double-precision resolution) | 375 (all 375 for that reason) |
+| Rejected (time value below double-precision resolution) | 375 |
 | Solved by Newton | 87.6% |
 | Solved by Brent fallback | 12.4% |
 | Max relative vol error (resolvable cases) | 7.3e-10 |
@@ -277,10 +286,10 @@ lower $\alpha$ per expiry).
 | 3 | 1.0e-12 |
 | 10 | 7.8e-14 |
 
-| Pricer | Time |
-|---|---|
-| FFT, one expiry, 26 strikes | 21.1 ms |
-| Lewis (`quad`), per strike | 6.5 ms |
+| Pricer | Measured time | Per 26-strike expiry |
+|---|---|---|
+| FFT (calls and puts) | 21.1 ms per expiry | 21.1 ms |
+| Lewis (`quad`) | 6.5 ms per strike | about 170 ms (26 × 6.5 ms, derived) |
 
 `PROGRESS.md` also records agreement of the characteristic function with a Riccati-ODE reference
 (|Δφ| < 1e-12, including T = 10) and a Black–Scholes limit at $\xi = 0$ (below 2e-11 for the FFT).
@@ -328,13 +337,13 @@ The clean fitted surface is arbitrage-free on the full grid $k \in [-1.5, 1.5]$.
 | Worst SVI error vs true IV | 0.495 vol points |
 | Median calibration time | 1.23 s |
 
-Read the 3 / 20 carefully. Each expiry is fitted independently, which does not guarantee
+Read the 3 / 20 result carefully. Each expiry is fitted independently, which does not guarantee
 arbitrage-free extrapolation beyond the quotes. In the demo market (seed 3) the single violation
 is a calendar violation purely in the extrapolated wings.
 
 ## 7. Verification
 
-`pytest` collects 146 tests across 10 modules; all pass. Hypothesis is used for property tests.
+`pytest` collects 148 tests across 10 modules; all pass locally and in CI. Hypothesis is used for property tests.
 Because Hypothesis draws new examples on every run, the property tests were also run under 40
 different seeds with no failures. That stress run is how a flaky tolerance was found and fixed:
 near the money with small total vol, the put price $e^k\Phi(-d_2) - \Phi(-d_1)$ subtracts two
@@ -342,12 +351,12 @@ numbers close to 0.5, and the test's tolerance now uses the condition number of 
 
 | Module | What the tests check |
 |---|---|
-| `black_scholes` | Hull reference prices; vega against finite differences; parity on a grid; price bounds; vol limits; strike monotonicity and convexity; deep-OTM time value; put/call symmetry |
+| `black_scholes` | Textbook reference prices (Hull's S = K = 100, T = 1, r = 5%, σ = 20% example); vega against finite differences; parity on a grid; price bounds; vol limits; strike monotonicity and convexity; deep-OTM time value; put/call symmetry |
 | `implied_vol` | Textbook recovery; Newton iteration count near the money; Brent fallback with tiny vega; bound rejection and messages; array version with NaNs; price-IV-price round trip; scalar versus vectorized path |
 | `heston` | CF normalization and martingale property; CF against Riccati ODE; the original Heston formula's branch cut at long T; FFT against Lewis; unusable damping rejected; moment explosion time against ODE; Black–Scholes limit; parity between independent call and put FFTs; monotone, convex prices |
 | `market` | Default counts; noise 0 is deterministic and matches Lewis IVs; seed reproducibility; bid, mid, ask ordering; OTM selection; JSON/CSV round trips; skew; spec validation |
 | `svi` | Derivatives against finite differences; analytic Jacobian; exact round trip; recovery over random valid parameters; constraints hold on noisy fits; determinism; weights; flat smile; minimum five points |
-| `arbitrage` | Clean slice passes; Vogt's butterfly example detected; clean and injected calendar pairs; JSON report |
+| `arbitrage` | Clean slice passes; Axel Vogt's butterfly-arbitrage example (from Gatheral and Jacquier 2014) detected; clean and injected calendar pairs; JSON report |
 | `pipeline` | Clean Heston surface passes; injected calendar and butterfly violations located; noisy market has no arbitrage inside the quoted range; report serializes |
 | `plotting` | Figure traces; surface grid includes expiries and does not extrapolate; interpolated variance monotone in T; violation markers; CDN and inline HTML; HTML escaping |
 | `cli` | End-to-end commands; CSV input; CDN and inline; arbitrage exit code; missing, malformed and invalid inputs; usage errors; output directories created; `fetch` error paths |
@@ -374,12 +383,13 @@ dividing by $T$. Interpolating linearly in $w$ between expiries preserves calend
 **SVI constraints, enforced exactly.** Instead of penalties, the parametrization makes invalid
 parameter sets unrepresentable. $a = c - b\sigma\sqrt{1-\rho^2}$ makes the minimum variance equal
 $c \ge 0$. $b = 2\beta/(1+|\rho|)$ with $\beta \in [0,1]$ gives $b(1+|\rho|) \le 2$, Lee's bound on
-the wing slope. The optimizer only ever sees valid slices. This removes negative-variance and
-steep-wing failures but does not make the surface arbitrage-free: the butterfly and calendar
+the wing slope. The optimizer only ever sees valid slices. This rules out negative variance and
+wings steeper than Lee's bound, but it does not make the surface arbitrage-free: the butterfly and calendar
 conditions still have to be checked, and are.
 
 **The Durrleman condition.** The risk-neutral density of log-moneyness is
-$g(k)/\sqrt{2\pi w}\,\exp(-d_-^2/2)$ (Gatheral and Jacquier 2014). The square root and the
+$g(k)/\sqrt{2\pi w}\,\exp(-d_-^2/2)$ with $d_- = -k/\sqrt{w} - \sqrt{w}/2$, i.e. $d_2$ written
+in total variance (Gatheral and Jacquier 2014). The square root and the
 exponential are positive, so the density has the sign of $g$. That makes $g \ge 0$ the condition
 for no butterfly arbitrage in a slice, and it needs only $w$, $w'$ and $w''$, all of which SVI
 gives in closed form. Violations are reported as contiguous intervals in $k$ with the worst point
@@ -399,7 +409,7 @@ $\alpha$ at half the admissible range, and raises an error that points to the Le
 usable damping exists.
 
 **Found in testing: Lee bound after wing arbitrage.** The SVI fit originally had no wing bound. A
-noisy 6-quote slice at $T = 0.1$ was extrapolated to wings with $g(k) = -7.8$, creating butterfly
+noisy 6-quote slice at $T = 0.1$ had extrapolated wings reaching $g(k) = -7.8$, creating butterfly
 and calendar arbitrage outside the quotes. The $b(1+|\rho|) \le 2$ constraint, built into the
 reparametrization, fixed that case. It does not fix extrapolation in general, as the 3 / 20 figure
 shows.
@@ -472,8 +482,9 @@ MIT. See [LICENSE](LICENSE).
 - S. L. Heston (1993), A closed-form solution for options with stochastic volatility with applications to bond and currency options, *Review of Financial Studies* 6(2).
 - H. Albrecher, P. Mayer, W. Schoutens and J. Tistaert (2007), The little Heston trap, *Wilmott Magazine*, January.
 - P. Carr and D. Madan (1999), Option valuation using the fast Fourier transform, *Journal of Computational Finance* 2(4).
-- R. W. Lee (2004), Option pricing by transform methods: extensions, unification and error control, *Journal of Computational Finance* 7(3).
-- R. W. Lee (2004), The moment formula for implied volatility at extreme strikes, *Mathematical Finance* 14(3).
+- J. C. Hull, *Options, Futures, and Other Derivatives* (Black–Scholes reference example used in the tests).
+- R. W. Lee (2004a), Option pricing by transform methods: extensions, unification and error control, *Journal of Computational Finance* 7(3).
+- R. W. Lee (2004b), The moment formula for implied volatility at extreme strikes, *Mathematical Finance* 14(3).
 - A. L. Lewis (2001), A simple option formula for general jump-diffusion and other exponential Lévy processes, SSRN working paper.
 - L. Andersen and V. Piterbarg (2007), Moment explosions in stochastic volatility models, *Finance and Stochastics* 11.
 - J. Gatheral (2004), A parsimonious arbitrage-free implied volatility parameterization with application to the valuation of volatility derivatives, Global Derivatives presentation.

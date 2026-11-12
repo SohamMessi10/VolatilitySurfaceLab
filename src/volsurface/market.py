@@ -201,7 +201,8 @@ def generate_market(
         F = float(forward_price(spec.spot, T, spec.r, spec.q))
         df = math.exp(-spec.r * T)
         is_call = K_all >= F
-        true = heston_price(F, K_all, T, params, df, is_call, method="fft")
+        # FFT normally; direct Lewis integration for expiries where no FFT damping is usable.
+        true = heston_price(F, K_all, T, params, df, is_call, method="auto")
         keep = true >= spec.min_price
         dropped += int((~keep).sum())
         # draw for all strikes so that the noise stream does not depend on dropping
