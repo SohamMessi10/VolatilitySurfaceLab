@@ -10,9 +10,10 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
 
 | # | Milestone | Status | Evidence |
 |---|-----------|--------|----------|
-| 0 | Scaffold: src layout, `pyproject.toml`, `vsl` entry point, CI (ruff + pytest on 3.12/3.13), `.gitignore` | IMPLEMENTED | CI result recorded below once the first run finishes |
+| 0 | Scaffold: src layout, `pyproject.toml`, CI (ruff + pytest on 3.12/3.13), `.gitignore` | VERIFIED | CI run #1 on `main` green on 3.12 and 3.13 (`c93f3bc`) |
 | 1 | Black–Scholes core in forward / log-moneyness coordinates | VERIFIED | `tests/test_black_scholes.py` |
 | 2 | Implied-vol solver (Newton on vega + Brent fallback, bound checks) | VERIFIED | `tests/test_implied_vol.py`, 2,000-example hypothesis round trip |
+| 3 | Heston pricer: little-trap CF, Carr–Madan FFT, Lewis direct integration | VERIFIED | `tests/test_heston.py` (48 tests) |
 
 ## Log
 
@@ -39,3 +40,29 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
   Black formula loses digits to cancellation (relative error ≈ ε·|d1|³/s). This only
   affects normalized prices around 1e-90 and below; the test tolerance follows that
   condition number instead of hiding it.
+
+### M3 — Heston pricer
+- CF: Albrecher et al. (2007) "little trap" form, with every `1/ξ²` removed algebraically
+  (`β − d = −ξ²(iu+u²)/(β+d)`) and Kahan's `log(w)/(w−1)` for `log1p(z)/z`
+  (numpy's complex `log1p` measured at 6e-8 relative error for |z| ~ 1e-9). Result: exact
+  Black–Scholes at ξ = 0, no cancellation for small ξ.
+- Verified against an independent reference, numerical integration of the Riccati ODEs
+  (DOP853, rtol 1e-12): |Δφ| < 1e-12, including T = 10 where the original Heston (1993)
+  formula is off by O(1) (branch-cut jump; asserted in `test_little_trap_avoids_original_branch_cut`).
+- Carr–Madan FFT, N = 2^15, η = 0.1 (strike spacing 0.0019 in k), Simpson weights,
+  cubic-spline interpolation between nodes. Calls use damping +α for k ≥ 0; puts use the
+  mirrored −1−α for k < 0 (same pole distances ⇒ same Simpson accuracy; −α instead measured
+  a 3e-8 bias). α is capped per expiry at half the admissible range from the critical
+  moments (Andersen–Piterbarg explosion time, verified against the real Riccati ODE to
+  rel 1e-5); η shrinks with α to keep η/pole-distance fixed. Unusable damping raises and
+  points to `method="lewis"` instead of silently mispricing (found while testing: α = 3
+  at T = 3 gave a 0.068 error with no NaN).
+- FFT vs Lewis (`quad` on [0, ∞)) on k ∈ [−1.5, 1], 26 strikes: max |Δ| / F ≤ 1.5e-11 for
+  the equity parameter set at T ∈ {0.05, 0.25, 1, 3, 10} and ≤ 9e-12 for a ρ > 0 set
+  (T ≤ 3); test threshold 5e-11.
+- Black–Scholes limit (v0 = θ): ξ = 0 matches BS to < 2e-11 (FFT) / < 1e-14 (Lewis); error
+  shrinks O(ξ) for ρ = −0.7 and O(ξ²) for ρ = 0, as theory predicts.
+- Put–call parity between the *independent* call- and put-side FFTs: |gap| < 1e-11 on
+  |k| < 1.5. Prices strictly monotone in strike above the FFT accuracy floor
+  (5e-11·df·F), butterflies ≥ −1e-9, slopes within [−df, 0].
+- ~17 ms per expiry for both sides (N = 2^15).
