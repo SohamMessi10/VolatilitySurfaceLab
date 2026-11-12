@@ -1,0 +1,144 @@
+{
+  "machine": {
+    "platform": "Linux-6.18.44-fc-v378-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+    "logical_cpus": 4,
+    "python": "3.12.3",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "volsurface": "0.1.0"
+  },
+  "implied_vol": {
+    "settings": {
+      "n": 20000,
+      "seed": 0,
+      "k": [
+        -3,
+        3
+      ],
+      "sigma": [
+        0.01,
+        3.0
+      ],
+      "T_years": [
+        0.0027397260273972603,
+        10.0
+      ],
+      "F": [
+        1,
+        1000
+      ],
+      "df": [
+        0.5,
+        1.0
+      ]
+    },
+    "solved": 19625,
+    "newton_share": 0.8764331210191083,
+    "brent_share": 0.12356687898089172,
+    "rejected": 375,
+    "rejected_with_unresolvable_time_value": 375,
+    "max_rel_vol_error_resolvable": 7.311243178660917e-10,
+    "median_rel_vol_error_resolvable": 3.925853664374097e-16,
+    "us_per_inversion": 11.115709299997434
+  },
+  "heston": {
+    "settings": {
+      "params": {
+        "v0": 0.04,
+        "kappa": 2.0,
+        "theta": 0.05,
+        "xi": 0.6,
+        "rho": -0.7
+      },
+      "k": "linspace(-1.5, 1.0, 26)",
+      "fft": {
+        "n": 32768,
+        "eta": 0.1,
+        "alpha": 1.5
+      },
+      "reference": "Lewis (2001) integral, scipy.integrate.quad on [0, inf)"
+    },
+    "max_abs_error_vs_lewis_normalized_by_forward": {
+      "0.05": 1.5422902097962914e-11,
+      "0.25": 4.54035154742391e-12,
+      "1.0": 3.481589582604583e-12,
+      "3.0": 1.0102370329168053e-12,
+      "10.0": 7.767397836033751e-14
+    },
+    "fft_ms_per_expiry_26_strikes": 21.092608000117252,
+    "lewis_ms_per_strike": 6.464089700011755
+  },
+  "pipeline": {
+    "clean": {
+      "quotes": 84,
+      "dropped": 30,
+      "generate_s": 0.15173698300031901,
+      "calibrate_s": 1.0024998209996738,
+      "check_s": 0.0010122500002580637,
+      "arbitrage_free_full_grid": true,
+      "slices": [
+        {
+          "T": 0.1,
+          "n": 6,
+          "rmse_vs_market_vp": 0.02860344414650051,
+          "max_vs_market_vp": 0.04716639224082719,
+          "rmse_vs_true_vp": 0.02860344414650051,
+          "max_vs_true_vp": 0.04716639224082719
+        },
+        {
+          "T": 0.25,
+          "n": 9,
+          "rmse_vs_market_vp": 0.058766453380075245,
+          "max_vs_market_vp": 0.07887822748040008,
+          "rmse_vs_true_vp": 0.058766453380075245,
+          "max_vs_true_vp": 0.07887822748040008
+        },
+        {
+          "T": 0.5,
+          "n": 14,
+          "rmse_vs_market_vp": 0.05151401794093767,
+          "max_vs_market_vp": 0.0821803342760663,
+          "rmse_vs_true_vp": 0.05151401794093767,
+          "max_vs_true_vp": 0.0821803342760663
+        },
+        {
+          "T": 1.0,
+          "n": 17,
+          "rmse_vs_market_vp": 0.007804007156823005,
+          "max_vs_market_vp": 0.011868587472074754,
+          "rmse_vs_true_vp": 0.007804007156823005,
+          "max_vs_true_vp": 0.011868587472074754
+        },
+        {
+          "T": 1.5,
+          "n": 19,
+          "rmse_vs_market_vp": 0.0009657761178140023,
+          "max_vs_market_vp": 0.0017122593876567338,
+          "rmse_vs_true_vp": 0.0009657761178140023,
+          "max_vs_true_vp": 0.0017122593876567338
+        },
+        {
+          "T": 2.0,
+          "n": 19,
+          "rmse_vs_market_vp": 0.0011845917017880103,
+          "max_vs_market_vp": 0.0019964136775241226,
+          "rmse_vs_true_vp": 0.0011845917017880103,
+          "max_vs_true_vp": 0.0019964136775241226
+        }
+      ]
+    },
+    "noisy": {
+      "settings": {
+        "noise": 1.0,
+        "seeds": "0..19",
+        "rel_half_spread": 0.02
+      },
+      "arbitrage_free_in_quoted_range": "20/20",
+      "arbitrage_free_full_grid_k_-1.5_1.5": "3/20",
+      "worst_svi_error_vs_true_vp": 0.49499978176409387,
+      "median_calibrate_s": 1.2274857375000465
+    }
+  }
+}

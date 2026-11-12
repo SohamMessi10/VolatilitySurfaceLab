@@ -41,7 +41,8 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
   max relative vol error 7.3e-10 (median 3.9e-16) wherever the time value is resolvable
   (> 1e-8 of the price); 87.6% solved by Newton, 12.4% by the Brent fallback; 375 cases
   rejected, all with time value below double-precision resolution; 10.7 µs per inversion
-  (scalar `math` fast path; ~237 µs per inversion with the numpy-scalar version it replaced).
+  (scalar `math` fast path; ~237 µs per inversion with the numpy-scalar version it replaced;
+  11.1 µs in the final `benchmarks/results.json` run).
 - Known limitation: far in the wings with tiny total vol (|d1|/s ~ 1e5) the direct
   Black formula loses digits to cancellation (relative error ≈ ε·|d1|³/s). This only
   affects normalized prices around 1e-90 and below; the test tolerance follows that
@@ -107,8 +108,9 @@ Linux x86_64, Intel Xeon @ 2.30 GHz, 4 vCPU, Python 3.12.3, numpy 2.5.4, scipy 1
   k ∈ [0.643, 1.256] (worst g = −0.0329 at k = 0.879) both as raw parameters and end-to-end
   from quotes; injected calendar inversion (T = 1.5 variance 2% below T = 1.0) detected and
   located over the whole quoted range.
-- Measured on 20 noisy markets (noise = 1, seeds 0–19): 20/20 free of arbitrage inside the
-  quoted ranges, but only 2/20 free on the full extrapolated grid. Independent per-slice SVI
+- Measured on 20 noisy markets (noise = 1, seeds 0–19, `benchmarks/results.json`): 20/20 free
+  of arbitrage inside the quoted ranges, but only 3/20 free on the full extrapolated grid
+  (2/20 before the analytic-Jacobian change, which moved the fits slightly). Independent per-slice SVI
   fits do not guarantee arbitrage-free extrapolation; a joint (SSVI-type) calibration is the
   standard fix and is listed as future work.
 
