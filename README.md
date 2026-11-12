@@ -1,6 +1,6 @@
 # Volatility Surface Lab
 
-[![CI](https://github.com/SohamMessi10/VolatilitySurfaceLab/actions/workflows/ci.yml/badge.svg)](https://github.com/SohamMessi10/VolatilitySurfaceLab/actions/workflows/ci.yml)
+[![CI](https://github.com/SohamMessi10/volatility-surface-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/SohamMessi10/volatility-surface-lab/actions/workflows/ci.yml)
 
 Volatility Surface Lab (package `volsurface`, command line tool `vsl`) builds an implied-volatility
 (IV) surface from a synthetic option market, fits it, and checks the result for static arbitrage.
@@ -15,8 +15,8 @@ written on top of numpy and scipy. Measured results are in [Measured results](#6
 known weaknesses are in [Limitations](#9-limitations-and-future-work).
 
 Demo: the report pages are in `docs/`. Once GitHub Pages is enabled for the repository, they are
-served at <https://sohammessi10.github.io/VolatilitySurfaceLab/> (noisy market) and
-<https://sohammessi10.github.io/VolatilitySurfaceLab/clean.html> (noise-free market). The source
+served at <https://sohammessi10.github.io/volatility-surface-lab/> (noisy market) and
+<https://sohammessi10.github.io/volatility-surface-lab/clean.html> (noise-free market). The source
 files are [`docs/index.html`](docs/index.html) and [`docs/clean.html`](docs/clean.html). Pages is
 not enabled yet: the repository owner has to turn it on (see [Enabling the demo](#enabling-the-demo)).
 
@@ -448,7 +448,7 @@ Future work:
 ## 10. Project layout
 
 ```text
-VolatilitySurfaceLab/
+volatility-surface-lab/
 ├── .github/workflows/ci.yml     ruff + pytest on Python 3.12 and 3.13
 ├── benchmarks/
 │   ├── bench.py                 reproduces the timings and accuracy figures

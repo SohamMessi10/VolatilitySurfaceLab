@@ -39,7 +39,7 @@ dev = [
 vsl = "volsurface.cli:main"
 
 [project.urls]
-Repository = "https://github.com/SohamMessi10/VolatilitySurfaceLab"
+Repository = "https://github.com/SohamMessi10/volatility-surface-lab"
 
 [tool.hatch.version]
 path = "src/volsurface/__init__.py"  # single source of truth for __version__ and `vsl --version`
