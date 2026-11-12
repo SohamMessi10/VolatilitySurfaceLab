@@ -101,6 +101,17 @@ def test_fft_rejects_unusable_damping_and_lewis_still_works():
     assert np.all(np.diff(prices) > 0)
 
 
+def test_auto_method_falls_back_to_lewis_only_when_needed():
+    strikes = [60.0, 100.0, 150.0]
+    # Unusable damping at T = 10 -> identical to Lewis.
+    auto = heston_price(100.0, strikes, 10.0, EXTREME, is_call=False, method="auto")
+    lewis = heston_price(100.0, strikes, 10.0, EXTREME, is_call=False, method="lewis")
+    np.testing.assert_array_equal(auto, lewis)
+    # Usable damping -> identical to the FFT.
+    auto = heston_price(100.0, strikes, 1.0, EQUITY, method="auto")
+    np.testing.assert_array_equal(auto, heston_price(100.0, strikes, 1.0, EQUITY, method="fft"))
+
+
 def test_raw_transform_refuses_exploded_moment():
     # Put damping -4 needs E[(F_T/F_0)^-3], which explodes at T* = 1.99 for EQUITY.
     t_star = moment_explosion_time(-3.0, EQUITY)
