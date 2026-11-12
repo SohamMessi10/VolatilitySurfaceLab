@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Generated outputs (regenerate with `vsl`); the published demo lives in docs/
+out/
+*.html
+!docs/*.html
+
+# Fetched market data must never be committed
+data/
+*.parquet
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

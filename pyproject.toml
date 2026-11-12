@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.33"]
+build-backend = "hatchling.build"
+
+[project]
+name = "volsurface"
+version = "0.1.0"
+description = "Arbitrage-checked implied-volatility surfaces: Heston synthetic market, SVI calibration, static-arbitrage checks."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Soham Chavan" }]
+keywords = ["implied volatility", "SVI", "Heston", "option pricing", "quant"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+# Minimums are the current releases on PyPI at the time of writing (checked 2026-11-12);
+# they are the versions this project is tested against.
+dependencies = [
+    "numpy>=2.5",
+    "scipy>=1.18",
+    "plotly>=7.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.2",
+    "hypothesis>=6.170",
+    "ruff>=0.17.4,<0.18",
+]
+
+[project.scripts]
+vsl = "volsurface.cli:main"
+
+[project.urls]
+Repository = "https://github.com/SohamMessi10/VolatilitySurfaceLab"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/volsurface"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["slow: slower numerical cross-checks"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "RUF", "SIM", "PT"]
+ignore = [
+    "RUF002",  # allow Greek letters (σ, ρ, κ) in docstrings
+    "RUF003",  # ... and in comments
+    "SIM108",  # if/else blocks are often clearer than ternaries in numerical code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B018"]
