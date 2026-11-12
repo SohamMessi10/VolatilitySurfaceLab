@@ -119,11 +119,25 @@ def test_round_trip_price_iv_price(k, sigma, T, F, df, is_call):
 
 @given(k=st.floats(-4.0, 4.0), s=st.floats(1e-4, 8.0))
 def test_scalar_fast_path_matches_vectorized(k, s):
-    # Both paths evaluate N(d1) - e^k N(d2) (or the put analogue). Far in the wings with
-    # small s that difference cancels: rounding of d1 perturbs N(d1) by ~d1^2 eps, and the
-    # cancellation amplifies it by ~|d1|/s. The tolerance follows that condition number.
+    # Both paths evaluate a - b with a = N(d1), b = e^k N(d2) (or the put analogue) using
+    # different erfc implementations. The agreement we can demand is set by the condition
+    # number of that subtraction, (a + b) / |a - b|, times the sensitivity of each term to
+    # rounding in d1 (~1 + d1^2). Near the money a ~ b ~ 0.5 (cond ~ 1/s); far in the wings
+    # with small s, cond ~ |d1|^3 / s.
     d1 = -k / s + 0.5 * s
-    cond = 1.0 + d1 * d1 + abs(d1) ** 3 / s
-    tol = 1e-14 * cond
+    d2 = d1 - s
+
+    def ncdf(x):
+        return 0.5 * math.erfc(-x / math.sqrt(2.0))
+
+    if k >= 0:
+        a, b = ncdf(d1), math.exp(k) * ncdf(d2)
+    else:
+        a, b = math.exp(k) * ncdf(-d2), ncdf(-d1)
+    sub_cond = (a + b) / max(abs(a - b), 1e-300)
+    tol = 1e-14 * (1.0 + d1 * d1) * sub_cond
     assert _otm_scalar(k, s) == pytest.approx(float(normalized_otm(k, s)), rel=tol, abs=1e-300)
-    assert _vega_scalar(k, s) == pytest.approx(float(normalized_vega(k, s)), rel=tol, abs=1e-300)
+    vega_tol = 1e-14 * (1.0 + d1 * d1)
+    assert _vega_scalar(k, s) == pytest.approx(
+        float(normalized_vega(k, s)), rel=vega_tol, abs=1e-300
+    )
