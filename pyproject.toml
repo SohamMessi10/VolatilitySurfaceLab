@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "volsurface"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Arbitrage-checked implied-volatility surfaces: Heston synthetic market, SVI calibration, static-arbitrage checks."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,8 +41,15 @@ vsl = "volsurface.cli:main"
 [project.urls]
 Repository = "https://github.com/SohamMessi10/VolatilitySurfaceLab"
 
+[tool.hatch.version]
+path = "src/volsurface/__init__.py"  # single source of truth for __version__ and `vsl --version`
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/volsurface"]
+
+[tool.hatch.build.targets.sdist]
+# Source, tests and benchmarks only; the demo pages and screenshots in docs/ are for GitHub.
+only-include = ["src", "tests", "benchmarks", "README.md", "PROGRESS.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
